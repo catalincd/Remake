@@ -237,6 +237,10 @@ def train(cfg: Config, spec: ModelSpec) -> str:
         print(f"  e{epoch:02d} train_acc={rec['train_acc']:.4f} "
               f"val_acc={val_acc:.4f} loss={val_loss:.4f} "
               f"{rec['elapsed_s']:.0f}s gpu={gpu_mb:.0f}MB")
+        rep = metrics.confusion_report(
+            metrics.summarize(val_true, val_pred, cfg.label_space), cfg.label_space)
+        if rep:
+            print(rep)
 
         is_best = val_acc > best_acc
         state = {"model": model.state_dict(), "epoch": epoch, "val_acc": val_acc,
