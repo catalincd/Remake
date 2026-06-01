@@ -28,6 +28,7 @@ class DataCfg:
 class TrainCfg:
     epochs: int = 20
     batch_size: int = 256
+    batch_size_jitter: int = 0                  # >0: per-epoch bs ~ batch_size ± this (regulariser)
     lr: float = 1.0e-3
     min_lr: float = 1.0e-5
     weight_decay: float = 0.05

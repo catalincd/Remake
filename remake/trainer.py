@@ -80,12 +80,15 @@ def _make_loaders(cfg: Config, spec: ModelSpec, num_classes: int):
         train_ds = D.make_feature_dataset(Feat.standardize_apply(Xtr, mean, std), train_y)
         val_ds = D.make_feature_dataset(Feat.standardize_apply(Xva, mean, std), val_y)
     nw = cfg.train.num_workers
-    train_dl = DataLoader(train_ds, batch_size=cfg.train.batch_size, shuffle=True,
-                          num_workers=nw, pin_memory=True, drop_last=True,
-                          persistent_workers=nw > 0)
     val_dl = DataLoader(val_ds, batch_size=cfg.train.batch_size * 2, shuffle=False,
                         num_workers=nw, pin_memory=True, persistent_workers=nw > 0)
-    return train_dl, val_dl, input_dim, std_params
+    return train_ds, val_dl, input_dim, std_params, nw
+
+
+def _train_loader(train_ds, batch_size, nw, persistent):
+    return DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                      num_workers=nw, pin_memory=True, drop_last=True,
+                      persistent_workers=persistent and nw > 0)
 
 
 @torch.no_grad()
@@ -115,7 +118,12 @@ def train(cfg: Config, spec: ModelSpec) -> str:
     device = _device()
     num_classes = taxonomy.num_classes(cfg.label_space)
 
-    train_dl, val_dl, input_dim, std_params = _make_loaders(cfg, spec, num_classes)
+    train_ds, val_dl, input_dim, std_params, nw = _make_loaders(cfg, spec, num_classes)
+    # Per-epoch batch-size jitter (regulariser): bs ~ base ± batch_size_jitter.
+    # When jittering we rebuild the train loader each epoch, so don't keep
+    # workers persistent (they'd leak across rebuilds).
+    bs_jitter = int(cfg.train.batch_size_jitter)
+    train_dl = _train_loader(train_ds, cfg.train.batch_size, nw, persistent=bs_jitter == 0)
     model = spec.builder(num_classes=num_classes, input_dim=input_dim,
                          **cfg.model_args).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -159,6 +167,10 @@ def train(cfg: Config, spec: ModelSpec) -> str:
     for epoch in range(1, cfg.train.epochs + 1):
         model.train()
         t0 = time.time()
+        if bs_jitter > 0:
+            bs = max(1, cfg.train.batch_size + int(np.random.randint(-bs_jitter, bs_jitter + 1)))
+            train_dl = _train_loader(train_ds, bs, nw, persistent=False)
+            print(f"  [epoch {epoch:02d}] batch_size={bs}")
         run_loss, run_correct, run_n, gnorm = 0.0, 0, 0, 0.0
         opt.zero_grad(set_to_none=True)
         desc = f"epoch {epoch:>{len(str(cfg.train.epochs))}}/{cfg.train.epochs} [train]"
