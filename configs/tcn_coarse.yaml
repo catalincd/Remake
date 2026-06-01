@@ -1,0 +1,6 @@
+name: tcn_coarse
+model: tcn
+label_space: coarse11
+data: {max_per_class: 15000, val_max_per_class: 4000}
+train: {epochs: 20, batch_size: 256, lr: 1.0e-3, weight_decay: 0.05, augment: true, gbflip_sigma: 0.01}
+model_args: {channels: 128, kernel: 5, n_levels: 8, stem_pool: 4}

@@ -1,0 +1,7 @@
+name: lgbm_spec_text
+model: lgbm
+label_space: specialist:text
+features: stats_hist
+data: {max_per_class: null, val_max_per_class: null}
+model_args: {n_estimators: 600, num_leaves: 127}
+notes: "Within-text fine classifier (md/rtf/txt/tex/json/html/xml/log/csv)."

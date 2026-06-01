@@ -1,0 +1,22 @@
+I am working on a File Fragment Type carver, using mainly the IEEE FFT-75 scenario 1, 4096B 
+
+My approach is a CNN / BiGRU hierarchical cascade, detailed in /home/wizard/Workspace/FFT/FFT-75-Hierarchical. Both Plateaud at 87.8% accuracy, exactly, with text / archive bleeding into each-other. You should read the folder for context;
+
+Try to look for other ideas (model architectures) that might work; we could make a synthesis of every plausible model, try them all and see what works and what doesn't.
+I already thought of:
+
+-LGBM
+-XGB
+-GNN's for byte transitions
+-Mamba
+
+Try to implement each, in a separated, modular and clean manner.
+
+Link 4k_1 in data, remake run_docker_torch.sh here, and make running it easier. Make sure to have a detailed model description first, and sliders for evolution tracking; save every generation, and a training log. Save as much info as possible, it will be graphed later.
+
+
+This is a 6750 XT running rocm, so smaller models first would be appreaciated. We are trying to see what works, we can train later on more expensive hardware with larger models.
+The target is 90% accuracy overall, which means both phase1 and phase2 should be above 90%.
+
+
+Prompt me before important decisions.

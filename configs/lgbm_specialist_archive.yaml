@@ -1,0 +1,7 @@
+name: lgbm_spec_archive
+model: lgbm
+label_space: specialist:archive
+features: stats_hist
+data: {max_per_class: null, val_max_per_class: null}
+model_args: {n_estimators: 600, num_leaves: 127}
+notes: "Within-archive fine classifier (apk/jar/msi/dmg/7z/bz2/deb/gz/pkg/rar/rpm/xz/zip)."

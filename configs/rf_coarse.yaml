@@ -1,0 +1,6 @@
+name: rf_coarse
+model: rf
+label_space: coarse11
+features: stats_hist
+data: {max_per_class: 25000, val_max_per_class: null}
+model_args: {n_estimators: 400, min_samples_leaf: 2}

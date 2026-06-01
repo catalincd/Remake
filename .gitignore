@@ -1,0 +1,16 @@
+# dataset & cache — live on HuggingFace, not in the code repo
+data/
+4k_1/
+runs/
+*.bin
+*.npy
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.pydeps/
+
+# editor / OS
+.DS_Store
+*.swp

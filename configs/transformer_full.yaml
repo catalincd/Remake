@@ -1,0 +1,19 @@
+name: transformer_full
+model: transformer
+label_space: coarse11
+data:
+  max_per_class: null          # FULL 6.14M train
+  val_max_per_class: 20000      # cap val/test eval to 220k (reliable acc, fast epochs)
+train:
+  epochs: 20
+  batch_size: 192               # ~7GB on the 12GB 6750 XT
+  lr: 8.0e-4
+  weight_decay: 0.05
+  warmup_pct: 0.1
+  augment: true
+  gbflip_sigma: 0.01
+  amp: true
+  early_stop_patience: 4         # stop if val_acc stalls (don't waste days)
+  num_workers: 6                 # lower while xgb is hogging CPU cores
+model_args: {d_model: 192, n_down: 4, nhead: 6, n_layers: 4}
+notes: "Byte Transformer on FULL data, coarse-11. SLOW on a 6750 XT (~1-2h/epoch)."

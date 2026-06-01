@@ -1,0 +1,14 @@
+name: xgb_coarse_full
+model: xgb
+label_space: coarse11
+features: stats_hist
+data: {max_per_class: null, val_max_per_class: null}   # full 6.14M train, full val/test
+model_args:
+  n_estimators: 2000          # upper bound; early stopping decides the real count
+  max_depth: 10
+  learning_rate: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.7
+  tree_method: hist           # CPU histogram; ROCm GPU support for xgb is unreliable
+  early_stopping_rounds: 50    # stop when full-val multi-logloss plateaus
+notes: "XGBoost on the FULL dataset, coarse-11. CPU all-core. ~7.6GB feature matrix."

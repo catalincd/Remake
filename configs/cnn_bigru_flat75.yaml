@@ -1,0 +1,6 @@
+name: cnn_bigru_flat75
+model: cnn_bigru
+label_space: flat75
+data: {max_per_class: 15000, val_max_per_class: 4000}
+train: {epochs: 25, batch_size: 256, lr: 1.0e-3, weight_decay: 0.05, augment: true, gbflip_sigma: 0.01}
+model_args: {channels: 96, gru_hidden: 128}

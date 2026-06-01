@@ -1,0 +1,7 @@
+name: ncd_lgbm_coarse
+model: lgbm
+label_space: coarse11
+features: stats_ncd
+data: {max_per_class: 20000, val_max_per_class: null}
+model_args: {n_estimators: 500, num_leaves: 127}
+notes: "NCD (zlib/bz2/lzma) + stats. Requires `./run.sh features stats,hist,ncd` (lzma is slow)."

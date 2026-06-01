@@ -1,0 +1,7 @@
+name: gnn_coarse
+model: gnn
+label_space: coarse11
+data: {max_per_class: 15000, val_max_per_class: 4000}
+train: {epochs: 20, batch_size: 256, lr: 1.0e-3, weight_decay: 0.05}
+model_args: {d: 96, n_layers: 3, dropout: 0.2}
+notes: "Message passing on the per-fragment 256-node byte-transition graph."

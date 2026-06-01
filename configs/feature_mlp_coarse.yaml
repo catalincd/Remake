@@ -1,0 +1,7 @@
+name: feature_mlp_coarse
+model: feature_mlp
+label_space: coarse11
+features: stats_hist
+data: {max_per_class: 40000, val_max_per_class: 8000}
+train: {epochs: 40, batch_size: 1024, lr: 1.0e-3, weight_decay: 0.01, num_workers: 4}
+model_args: {hidden: [512, 256, 128], dropout: 0.3}
