@@ -75,8 +75,8 @@ def main():
                 upload(f, f"features/{f.name}")
 
     print(f"\nDone. Pull on vast.ai with:")
-    print(f"  huggingface-cli download {repo} --repo-type dataset --local-dir data/4k_1")
-    print(f"  (then symlink: ln -sfn data/4k_1/binary data/4k_1/binary)")
+    print(f"  bash scripts/setup_vastai.sh --hf-user {repo.split('/')[0]}")
+    print(f"  (which calls huggingface_hub.snapshot_download — no CLI needed)")
 
 
 if __name__ == "__main__":

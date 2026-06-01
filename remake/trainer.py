@@ -134,6 +134,18 @@ def train(cfg: Config, spec: ModelSpec) -> str:
     opt = build_optimizer(model, cfg.train.lr, cfg.train.weight_decay)
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.train.amp and device.type == "cuda")
     crit = nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
+    # Optional confusion penalty: discourage routing wrong samples into a "sink"
+    # class (here `archive`, which every high-entropy class bleeds into).
+    conf_lambda = float(cfg.train.confusion_lambda)
+    conf_idx = None
+    if conf_lambda > 0:
+        names = taxonomy.class_names(cfg.label_space)
+        if cfg.train.confusion_target not in names:
+            raise ValueError(f"confusion_target {cfg.train.confusion_target!r} "
+                             f"not in {cfg.label_space} classes: {names}")
+        conf_idx = names.index(cfg.train.confusion_target)
+        print(f"[train] confusion penalty λ={conf_lambda} on "
+              f"'{cfg.train.confusion_target}' (idx {conf_idx})")
 
     steps_per_epoch = len(train_dl) // cfg.train.grad_accum
     total_steps = steps_per_epoch * cfg.train.epochs
@@ -157,7 +169,14 @@ def train(cfg: Config, spec: ModelSpec) -> str:
             yb = yb.to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, enabled=scaler.is_enabled()):
                 logits = model(xb)
-                loss = crit(logits, yb) / cfg.train.grad_accum
+                loss = crit(logits, yb)
+                if conf_idx is not None:
+                    # mean prob mass placed on the sink class over samples whose
+                    # true label is NOT the sink — pushes the model off the lazy default.
+                    p_sink = torch.softmax(logits.float(), -1)[:, conf_idx]
+                    mask = (yb != conf_idx).float()
+                    loss = loss + conf_lambda * (p_sink * mask).sum() / mask.sum().clamp_min(1.0)
+                loss = loss / cfg.train.grad_accum
             scaler.scale(loss).backward()
             if (bi + 1) % cfg.train.grad_accum == 0:
                 for g in opt.param_groups:

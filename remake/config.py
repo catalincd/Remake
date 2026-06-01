@@ -33,6 +33,8 @@ class TrainCfg:
     weight_decay: float = 0.05
     warmup_pct: float = 0.05
     label_smoothing: float = 0.0
+    confusion_lambda: float = 0.0               # >0 penalises predicting confusion_target when true class isn't it
+    confusion_target: str = "archive"           # the "sink" class everything bleeds into
     grad_clip: float = 1.0
     grad_accum: int = 1
     amp: bool = True
