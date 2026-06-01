@@ -127,6 +127,13 @@ def train(cfg: Config, spec: ModelSpec) -> str:
     model = spec.builder(num_classes=num_classes, input_dim=input_dim,
                          **cfg.model_args).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if cfg.train.init_from:
+        ckpt = torch.load(cfg.train.init_from, map_location=device)
+        sd = ckpt.get("model", ckpt)
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print(f"[train] warm-start from {cfg.train.init_from} "
+              f"(was epoch {ckpt.get('epoch', '?')}, val_acc {ckpt.get('val_acc', '?')}); "
+              f"missing={len(missing)} unexpected={len(unexpected)}")
     if cfg.train.compile:
         model = torch.compile(model)
 

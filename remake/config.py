@@ -48,6 +48,7 @@ class TrainCfg:
     early_stop_patience: int = 0                # 0 disables
     eval_every: int = 1
     seed: int = 42
+    init_from: Optional[str] = None             # warm-start: load model weights from this checkpoint
 
 
 @dataclass
