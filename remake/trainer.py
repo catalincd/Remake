@@ -140,7 +140,7 @@ def train(cfg: Config, spec: ModelSpec) -> str:
           f"classes={num_classes}  device={device}")
 
     opt = build_optimizer(model, cfg.train.lr, cfg.train.weight_decay)
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.train.amp and device.type == "cuda")
+    scaler = torch.amp.GradScaler(device.type, enabled=cfg.train.amp and device.type == "cuda")
     crit = nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     # Optional confusion penalty: discourage routing wrong samples into a "sink"
     # class (here `archive`, which every high-entropy class bleeds into).
