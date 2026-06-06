@@ -1,0 +1,12 @@
+name: spec_vector_lgbm
+model: lgbm
+label_space: specialist:vector
+features: stats_hist
+data:
+  max_per_class: null
+  val_max_per_class: null
+model_args:
+  n_estimators: 500
+  num_leaves: 127
+  learning_rate: 0.05
+notes: LightGBM specialist for 'vector' (3 leaves).

@@ -1,0 +1,12 @@
+name: spec_executable_lgbm
+model: lgbm
+label_space: specialist:executable
+features: stats_hist
+data:
+  max_per_class: null
+  val_max_per_class: null
+model_args:
+  n_estimators: 500
+  num_leaves: 127
+  learning_rate: 0.05
+notes: LightGBM specialist for 'executable' (4 leaves).

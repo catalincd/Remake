@@ -1,0 +1,27 @@
+name: tcn_ft_90
+model: tcn
+label_space: coarse11
+# Warm-start fine-tune of the 89.6% run (tcn_big_ls_conf). Same architecture so
+# the whole network resumes; a fresh short cosine at lower lr + EMA pushes past
+# the schedule-killed plateau, with a stronger archive-sink penalty.
+data:
+  max_per_class: null
+  val_max_per_class: 20000
+model_args: {channels: 256, kernel: 5, n_levels: 8, stem_pool: 8, dropout: 0.15}
+train:
+  init_from: runs/tcn_big_ls_conf_20260601_191940/ckpt/best.pt
+  epochs: 8
+  batch_size: 512
+  lr: 3.0e-4              # < original 1e-3: nudge, don't wreck the warm-started weights
+  min_lr: 1.0e-6
+  weight_decay: 0.05
+  warmup_pct: 0.02
+  label_smoothing: 0.08
+  confusion_lambda: 0.4   # up from 0.3 — archive precision is the bottleneck (51%)
+  confusion_target: archive
+  augment: true
+  gbflip_sigma: 0.01
+  ema_decay: 0.999         # was off; cheap, stable boost (best.pt saves EMA weights)
+  early_stop_patience: 4
+  num_workers: 6
+notes: "Fine-tune tcn_big_ls_conf (val 0.8963) toward >0.90 coarse-11."

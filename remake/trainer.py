@@ -130,10 +130,18 @@ def train(cfg: Config, spec: ModelSpec) -> str:
     if cfg.train.init_from:
         ckpt = torch.load(cfg.train.init_from, map_location=device)
         sd = ckpt.get("model", ckpt)
-        missing, unexpected = model.load_state_dict(sd, strict=False)
+        sd = {k.removeprefix("_orig_mod."): v for k, v in sd.items()}  # undo torch.compile
+        # Keep only keys whose shapes match — lets a specialist (k-way head)
+        # warm-start the byte encoder from a phase-1 checkpoint (11-way head)
+        # while reinitialising the mismatched head.
+        msd = model.state_dict()
+        compatible = {k: v for k, v in sd.items()
+                      if k in msd and v.shape == msd[k].shape}
+        dropped = [k for k in sd if k not in compatible]
+        missing, unexpected = model.load_state_dict(compatible, strict=False)
         print(f"[train] warm-start from {cfg.train.init_from} "
-              f"(was epoch {ckpt.get('epoch', '?')}, val_acc {ckpt.get('val_acc', '?')}); "
-              f"missing={len(missing)} unexpected={len(unexpected)}")
+              f"(epoch {ckpt.get('epoch', '?')}, val_acc {ckpt.get('val_acc', '?')}); "
+              f"loaded={len(compatible)}/{len(sd)} dropped_shape_mismatch={dropped}")
     if cfg.train.compile:
         model = torch.compile(model)
 
