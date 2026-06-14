@@ -151,6 +151,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--router", default=None,
                     help="phase-1 run dir (default: latest tcn_ft_90)")
+    ap.add_argument("--rerouter", default=None,
+                    help="run dir of a rerouter:<sink> model; applied to the "
+                         "sink bucket to pull misrouted high-entropy formats out")
     ap.add_argument("--spec", nargs="*", default=[],
                     help="per-group overrides, e.g. raw=tcn archive=lgbm")
     ap.add_argument("--binary-dir", default="data/4k_1/binary")
@@ -230,6 +233,24 @@ def main():
     router = make_pred(router_dir)
     g_hat = router.predict(np.arange(N))             # predicted group per row
     coarse_acc = float((g_hat == y_group).mean())
+
+    # Optional re-route: re-classify the sink bucket and pull misrouted
+    # high-entropy formats back out to their true group.
+    if args.rerouter:
+        rr_dir = Path(args.rerouter)
+        sink = _read_cfg(rr_dir)["label_space"].split(":", 1)[1]
+        sink_idx = taxonomy.GROUP_TO_IDX[sink]
+        rr_groups = np.asarray(taxonomy.rerouter_group_idx(sink))
+        pos = np.nonzero(g_hat == sink_idx)[0]
+        print(f"re-routing ({rr_dir.name}): {pos.size} rows in '{sink}' bucket ...")
+        if pos.size:
+            new_g = rr_groups[make_pred(rr_dir).predict(pos)]
+            moved = int((new_g != sink_idx).sum())
+            g_hat[pos] = new_g
+            rr_coarse = float((g_hat == y_group).mean())
+            print(f"  moved {moved}/{pos.size} out of '{sink}';  "
+                  f"coarse-11 acc {coarse_acc:.4f} -> {rr_coarse:.4f}")
+            coarse_acc = rr_coarse
 
     # Phase-2: predicted-routing (cascade) and true-routing (oracle).
     # Run each specialist ONCE over the union of the rows it must judge for

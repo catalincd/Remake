@@ -81,6 +81,27 @@ def group_leaf_names(group: str) -> list[str]:
     return [LEAF_NAMES[li] for li in GROUP_LEAVES[group]]
 
 
+# ---------------------------------------------------------------------------
+# Re-routers (label_space "rerouter:<sink>")
+# ---------------------------------------------------------------------------
+# A re-router is a coarse classifier over just the handful of groups that the
+# phase-1 router confuses with a high-entropy "sink" group. At cascade time it
+# is applied only to fragments the main router sent to the sink, to pull the
+# misrouted high-entropy formats back out to their true specialist.
+#
+# The sink group itself is always the FIRST class (local 0), so a fragment the
+# re-router still believes belongs there simply stays.
+REROUTER_GROUPS: dict[str, list[str]] = {
+    # `archive` precision is only ~52%: bitmap/video/executable/published bleed in.
+    "archive": ["archive", "bitmap", "video", "executable", "published"],
+}
+
+
+def rerouter_group_idx(sink: str) -> list[int]:
+    """Global group indices for a re-router's classes, in local order."""
+    return [GROUP_TO_IDX[g] for g in REROUTER_GROUPS[sink]]
+
+
 def num_classes(label_space: str) -> int:
     if label_space == "flat75":
         return NUM_LEAVES
@@ -88,6 +109,8 @@ def num_classes(label_space: str) -> int:
         return NUM_GROUPS
     if label_space.startswith("specialist:"):
         return len(GROUP_LEAVES[label_space.split(":", 1)[1]])
+    if label_space.startswith("rerouter:"):
+        return len(REROUTER_GROUPS[label_space.split(":", 1)[1]])
     raise ValueError(f"unknown label_space: {label_space}")
 
 
@@ -98,6 +121,8 @@ def class_names(label_space: str) -> list[str]:
         return list(GROUP_NAMES)
     if label_space.startswith("specialist:"):
         return group_leaf_names(label_space.split(":", 1)[1])
+    if label_space.startswith("rerouter:"):
+        return list(REROUTER_GROUPS[label_space.split(":", 1)[1]])
     raise ValueError(f"unknown label_space: {label_space}")
 
 

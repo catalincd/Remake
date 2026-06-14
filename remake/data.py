@@ -64,6 +64,17 @@ def map_labels(raw: np.ndarray, label_space: str) -> tuple[np.ndarray, np.ndarra
         for leaf, loc in taxonomy.GROUP_LOCAL_IDX[group].items():
             local[leaf] = loc
         return keep, local[raw[keep]]
+    if label_space.startswith("rerouter:"):
+        sink = label_space.split(":", 1)[1]
+        leaf_to_group = np.asarray(taxonomy.LEAF_TO_GROUP, dtype=np.int64)
+        samp_group = leaf_to_group[raw]                 # group idx per sample
+        # global group idx -> local re-router class (else -1)
+        glocal = np.full(taxonomy.NUM_GROUPS, -1, dtype=np.int64)
+        for k, gi in enumerate(taxonomy.rerouter_group_idx(sink)):
+            glocal[gi] = k
+        samp_local = glocal[samp_group]
+        keep = np.nonzero(samp_local >= 0)[0]
+        return keep, samp_local[keep]
     raise ValueError(f"unknown label_space: {label_space}")
 
 
