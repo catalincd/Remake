@@ -28,7 +28,10 @@ def latest(prefix: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="lgbm")
+    ap.add_argument("--runs-dir", default="runs")
     args = ap.parse_args()
+    global RUNS
+    RUNS = Path(args.runs_dir)
 
     print(f"\nPhase-2 specialist isolated accuracy  (model={args.model}, "
           f"assumes perfect routing)")

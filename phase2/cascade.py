@@ -156,6 +156,8 @@ def main():
                          "sink bucket to pull misrouted high-entropy formats out")
     ap.add_argument("--spec", nargs="*", default=[],
                     help="per-group overrides, e.g. raw=tcn archive=lgbm")
+    ap.add_argument("--runs-dir", default="runs",
+                    help="directory holding the run dirs (default: runs)")
     ap.add_argument("--binary-dir", default="data/4k_1/binary")
     ap.add_argument("--features-dir", default="data/4k_1/features")
     ap.add_argument("--features", default="stats_hist")
@@ -169,6 +171,8 @@ def main():
     args = ap.parse_args()
 
     t0 = time.time()
+    global RUNS
+    RUNS = Path(args.runs_dir)
     recipe = dict(DEFAULT_SPEC)
     for kv in args.spec:
         g, _, m = kv.partition("=")
