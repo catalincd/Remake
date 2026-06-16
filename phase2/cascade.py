@@ -111,20 +111,29 @@ class Predictor:
         """pos: positions into rows_all. Returns local class indices."""
         if pos.size == 0:
             return np.empty(0, dtype=np.int64)
+        return self.predict_proba(pos).argmax(1).astype(np.int64)
+
+    def predict_proba(self, pos: np.ndarray) -> np.ndarray:
+        """pos: positions into rows_all. Returns (n, num_classes) probabilities
+        in canonical 0..C-1 class order."""
+        if pos.size == 0:
+            return np.empty((0, self.num_classes), dtype=np.float32)
         self._load()
         if self.spec.kind == "tree":
-            return self._predict_tree(pos)
-        return self._predict_nn(pos)
+            return self._proba_tree(pos)
+        return self._proba_nn(pos)
 
-    def _predict_tree(self, pos):
-        probs = self._model.predict_proba(self._X_sub[pos])
+    def _proba_tree(self, pos):
+        p = self._model.predict_proba(self._X_sub[pos]).astype(np.float32)
         classes = getattr(self._model, "classes_", None)
-        local = probs.argmax(1)
-        if classes is not None:
-            local = np.asarray(classes)[local]
-        return local.astype(np.int64)
+        if classes is not None and not np.array_equal(
+                np.asarray(classes), np.arange(self.num_classes)):
+            full = np.zeros((p.shape[0], self.num_classes), dtype=np.float32)
+            full[:, np.asarray(classes).astype(int)] = p
+            p = full
+        return p
 
-    def _predict_nn(self, pos):
+    def _proba_nn(self, pos):
         import torch
         from torch.utils.data import DataLoader
         rows = self.rows_all[pos]
@@ -140,8 +149,8 @@ class Predictor:
                 xb = xb.to(dev, non_blocking=True)
                 with torch.autocast(device_type=dev.type, enabled=dev.type == "cuda"):
                     logits = self._model(xb)
-                out.append(logits.float().argmax(-1).cpu().numpy())
-        return np.concatenate(out).astype(np.int64)
+                out.append(torch.softmax(logits.float(), -1).cpu().numpy())
+        return np.concatenate(out).astype(np.float32)
 
 
 # --------------------------------------------------------------------------- #
@@ -155,6 +164,10 @@ def main():
     ap.add_argument("--rerouter", default=None,
                     help="run dir of a rerouter:<sink> model; applied to the "
                          "sink bucket to pull misrouted high-entropy formats out")
+    ap.add_argument("--reroute-threshold", type=float, default=0.0,
+                    help="only move a fragment OUT of the sink when the re-router's "
+                         "chosen non-sink class prob >= this (0=always reroute on "
+                         "argmax; higher protects true-sink members, try 0.5-0.7)")
     ap.add_argument("--spec", nargs="*", default=[],
                     help="per-group overrides, e.g. raw=tcn archive=lgbm")
     ap.add_argument("--runs-dir", nargs="+", default=["runs"],
@@ -248,13 +261,19 @@ def main():
         sink_idx = taxonomy.GROUP_TO_IDX[sink]
         rr_groups = np.asarray(taxonomy.rerouter_group_idx(sink))
         pos = np.nonzero(g_hat == sink_idx)[0]
-        print(f"re-routing ({rr_dir.name}): {pos.size} rows in '{sink}' bucket ...")
+        tau = args.reroute_threshold
+        print(f"re-routing ({rr_dir.name}): {pos.size} rows in '{sink}' bucket, "
+              f"threshold={tau} ...")
         if pos.size:
-            new_g = rr_groups[make_pred(rr_dir).predict(pos)]
-            moved = int((new_g != sink_idx).sum())
-            g_hat[pos] = new_g
+            probs = make_pred(rr_dir).predict_proba(pos)        # (n, |sink set|)
+            local = probs.argmax(1)
+            chosen_p = probs[np.arange(local.size), local]
+            new_g = rr_groups[local]
+            # move out only when the re-router picks a NON-sink class confidently
+            do = (new_g != sink_idx) & (chosen_p >= tau)
+            g_hat[pos[do]] = new_g[do]
             rr_coarse = float((g_hat == y_group).mean())
-            print(f"  moved {moved}/{pos.size} out of '{sink}';  "
+            print(f"  moved {int(do.sum())}/{pos.size} out of '{sink}';  "
                   f"coarse-11 acc {coarse_acc:.4f} -> {rr_coarse:.4f}")
             coarse_acc = rr_coarse
 
@@ -293,6 +312,13 @@ def main():
     cascade_acc = float((pred_cascade == y_leaf).mean())
     oracle_acc = None if args.no_oracle else float((pred_oracle == y_leaf).mean())
 
+    # Information-limit view: collapse byte-identical leaves and re-score.
+    mlut, n_merged, fams = taxonomy.merged_leaf_lut()
+    mlut = np.asarray(mlut)
+    merged_cascade = float((mlut[pred_cascade] == mlut[y_leaf]).mean())
+    merged_oracle = None if args.no_oracle else \
+        float((mlut[pred_oracle] == mlut[y_leaf]).mean())
+
     # Report ------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("END-TO-END CASCADE  (test split, correct 75-class labels)")
@@ -303,6 +329,11 @@ def main():
     print(f"  Full cascade leaf acc (75-way): {cascade_acc:.4f}")
     if oracle_acc is not None:
         print(f"  routing loss (oracle-cascade): {oracle_acc - cascade_acc:.4f}")
+    print(f"\n  information-limit ({n_merged}-way, byte-identical leaves merged):")
+    print("    " + "  ".join("{" + "/".join(v) + "}" for v in fams.values()))
+    if merged_oracle is not None:
+        print(f"    merged oracle leaf acc  : {merged_oracle:.4f}")
+    print(f"    merged cascade leaf acc : {merged_cascade:.4f}")
     print("\n  per-group (leaf acc on each group's TRUE members):")
     print(f"    {'group':11s} {'n':>7} {'r_rec':>6} {'r_prec':>7} "
           f"{'oracle':>7} {'cascade':>8} {'drop':>6}")

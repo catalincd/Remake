@@ -102,6 +102,45 @@ def rerouter_group_idx(sink: str) -> list[int]:
     return [GROUP_TO_IDX[g] for g in REROUTER_GROUPS[sink]]
 
 
+# ---------------------------------------------------------------------------
+# Leaf merging (the "information-limit" report)
+# ---------------------------------------------------------------------------
+# Some leaf pairs/triples are byte-identical mid-stream because they share a
+# container or compression engine, so NO model can separate them from a 4 KB
+# fragment. Collapsing them gives an honest second number alongside the 75-way:
+# accuracy when impossible-to-separate formats are scored as one class. This is
+# a *report-time relabeling* (applied to both prediction and truth) — it needs
+# no retraining.
+MERGE_FAMILIES: dict[str, list[str]] = {
+    "lzma":     ["7z", "xz"],            # raw LZMA/LZMA2 streams
+    "mpeg4":    ["mp4", "mov", "3gp"],   # ISO base media (same mdat/H.264)
+    "matroska": ["mkv", "webm"],         # EBML (webm ⊂ mkv)
+    "ole2":     ["doc", "ppt", "xls"],   # OLE2/CFBF compound binary
+    "ooxml":    ["docx", "pptx", "xlsx"],# OOXML = zip + deflate
+}
+
+
+def merged_leaf_lut() -> tuple[list[int], int, dict[str, list[str]]]:
+    """Map each of the 75 leaves to a merged-class id (contiguous 0..M-1).
+
+    Members of a MERGE_FAMILIES family collapse to one shared id; every other
+    leaf keeps its own. Returns (lut[75], n_merged_classes, applied_families).
+    """
+    name_to_idx = {n: i for i, n in enumerate(LEAF_NAMES)}
+    lut = list(range(NUM_LEAVES))
+    applied: dict[str, list[str]] = {}
+    for fam, names in MERGE_FAMILIES.items():
+        idxs = sorted(name_to_idx[n] for n in names if n in name_to_idx)
+        if len(idxs) < 2:
+            continue
+        for i in idxs:
+            lut[i] = idxs[0]            # representative = lowest leaf index
+        applied[fam] = [LEAF_NAMES[i] for i in idxs]
+    uniq = sorted(set(lut))
+    remap = {u: k for k, u in enumerate(uniq)}
+    return [remap[x] for x in lut], len(uniq), applied
+
+
 def num_classes(label_space: str) -> int:
     if label_space == "flat75":
         return NUM_LEAVES
