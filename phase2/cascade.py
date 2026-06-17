@@ -168,6 +168,10 @@ def main():
                     help="only move a fragment OUT of the sink when the re-router's "
                          "chosen non-sink class prob >= this (0=always reroute on "
                          "argmax; higher protects true-sink members, try 0.5-0.7)")
+    ap.add_argument("--topk", type=int, default=1,
+                    help="soft cascade: marginalize P(leaf)=P(group)*P(leaf|group) "
+                         "over the router's top-K groups (1=hard cascade, default). "
+                         "Ignores --rerouter when >1.")
     ap.add_argument("--spec", nargs="*", default=[],
                     help="per-group overrides, e.g. raw=tcn archive=lgbm")
     ap.add_argument("--runs-dir", nargs="+", default=["runs"],
@@ -250,8 +254,12 @@ def main():
     # Phase-1 routing ---------------------------------------------------------
     print("routing (phase-1) ...")
     router = make_pred(router_dir)
-    g_hat = router.predict(np.arange(N))             # predicted group per row
+    router_probs = router.predict_proba(np.arange(N))   # (N, 11) group posteriors
+    g_hat = router_probs.argmax(1)                       # hard pick per row
     coarse_acc = float((g_hat == y_group).mean())
+    topk = max(1, args.topk)
+    # soft cascade: candidate groups = router's top-K (k=1 reduces to hard)
+    cand = np.argsort(-router_probs, axis=1)[:, :topk] if topk > 1 else None
 
     # Optional re-route: re-classify the sink bucket and pull misrouted
     # high-entropy formats back out to their true group.
@@ -278,25 +286,45 @@ def main():
             coarse_acc = rr_coarse
 
     # Phase-2: predicted-routing (cascade) and true-routing (oracle).
-    # Run each specialist ONCE over the union of the rows it must judge for
-    # either pass, then scatter into both — halves NN specialist inference.
+    # Hard (topk=1): the one router-picked specialist decides.
+    # Soft (topk>1): marginalize P(leaf|x) = P(group|x)·P(leaf|x,group) over the
+    # router's top-K groups and argmax over all leaves — recovers samples the
+    # router is unsure about without committing to a single wrong group.
+    # Each specialist still runs ONCE over the union of the rows it must judge.
     gleaves = {g: np.asarray(taxonomy.GROUP_LEAVES[g]) for g in taxonomy.GROUP_NAMES}
 
     pred_cascade = np.full(N, -1, dtype=np.int64)
     pred_oracle = np.full(N, -1, dtype=np.int64)
+    soft_score = np.full(N, -1.0, dtype=np.float64)      # best P(group)·P(leaf) so far
+    if topk > 1:
+        print(f"soft cascade: marginalizing over router top-{topk} groups")
     per_group = {}
     for gi, g in enumerate(taxonomy.GROUP_NAMES):
         gl = gleaves[g]
-        m_cas = np.nonzero(g_hat == gi)[0]                # router sent here
+        if topk > 1:
+            m_cas = np.nonzero((cand == gi).any(axis=1))[0]   # gi in this row's top-K
+        else:
+            m_cas = np.nonzero(g_hat == gi)[0]                # router sent here
         m_orc = np.array([], dtype=np.int64) if args.no_oracle \
             else np.nonzero(y_group == gi)[0]             # truly belongs here
         u = np.union1d(m_cas, m_orc)
         if u.size:
             t = time.time()
-            loc = gl[make_pred(spec_dirs[g]).predict(u)]
-            pred_cascade[m_cas] = loc[np.searchsorted(u, m_cas)]
-            if m_orc.size:
-                pred_oracle[m_orc] = loc[np.searchsorted(u, m_orc)]
+            sp = make_pred(spec_dirs[g]).predict_proba(u)     # (|u|, n_leaves_g)
+            loc_leaf = gl[sp.argmax(1)]                        # hard leaf per row
+            if m_orc.size:                                    # oracle = hard argmax
+                pred_oracle[m_orc] = loc_leaf[np.searchsorted(u, m_orc)]
+            if topk > 1:                                      # soft accumulation
+                idx = np.searchsorted(u, m_cas)
+                scores = router_probs[m_cas, gi][:, None] * sp[idx]
+                bl = scores.argmax(1)
+                bv = scores[np.arange(bl.size), bl]
+                win = bv > soft_score[m_cas]
+                sel = m_cas[win]
+                soft_score[sel] = bv[win]
+                pred_cascade[sel] = gl[bl[win]]
+            else:                                             # hard
+                pred_cascade[m_cas] = loc_leaf[np.searchsorted(u, m_cas)]
             print(f"  {g:11s} {u.size:7d} rows  {time.time()-t:5.1f}s")
         true_here = y_group == gi
         routed_here = g_hat == gi
@@ -326,7 +354,8 @@ def main():
     print(f"  Phase-1 coarse-11 accuracy   : {coarse_acc:.4f}")
     if oracle_acc is not None:
         print(f"  Oracle leaf acc (true route) : {oracle_acc:.4f}")
-    print(f"  Full cascade leaf acc (75-way): {cascade_acc:.4f}")
+    mode = f"soft top-{topk}" if topk > 1 else "hard"
+    print(f"  Full cascade leaf acc (75-way): {cascade_acc:.4f}  [{mode}]")
     if oracle_acc is not None:
         print(f"  routing loss (oracle-cascade): {oracle_acc - cascade_acc:.4f}")
     print(f"\n  information-limit ({n_merged}-way, byte-identical leaves merged):")
