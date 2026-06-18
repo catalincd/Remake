@@ -159,8 +159,13 @@ class Predictor:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--router", default=None,
-                    help="phase-1 run dir (default: latest tcn_ft_90)")
+    ap.add_argument("--router", nargs="+", default=None,
+                    help="phase-1 run dir(s) (default: latest tcn_ft_90). Pass "
+                         "several to ENSEMBLE routers — their coarse-11 posteriors "
+                         "are averaged (see --router-weights).")
+    ap.add_argument("--router-weights", nargs="+", type=float, default=None,
+                    help="per-router weights for the ensemble (default: equal). "
+                         "Downweight weaker routers, e.g. tcn=2 lgbm=1.")
     ap.add_argument("--rerouter", default=None,
                     help="run dir of a rerouter:<sink> model; applied to the "
                          "sink bucket to pull misrouted high-entropy formats out")
@@ -198,9 +203,16 @@ def main():
         recipe[g] = m
 
     # Resolve run dirs --------------------------------------------------------
-    router_dir = Path(args.router) if args.router else latest("tcn_ft_90")
-    if router_dir is None or not router_dir.exists():
+    if args.router:
+        router_dirs = [Path(r) for r in args.router]
+    else:
+        d = latest("tcn_ft_90")
+        router_dirs = [d] if d else []
+    if not router_dirs or any(not r.exists() for r in router_dirs):
         raise SystemExit("router run not found (pass --router runs/<dir>)")
+    rw = args.router_weights or [1.0] * len(router_dirs)
+    if len(rw) != len(router_dirs):
+        raise SystemExit("--router-weights must match the number of --router dirs")
     spec_dirs: dict[str, Path] = {}
     for g in taxonomy.GROUP_NAMES:
         d = latest(f"spec_{g}_{recipe[g]}")
@@ -209,7 +221,8 @@ def main():
                              f"(train it or override with --spec {g}=<model>)")
         spec_dirs[g] = d
 
-    print(f"router  : {router_dir.name}")
+    print("router  : " + ", ".join(f"{r.name}(w={w})"
+                                    for r, w in zip(router_dirs, rw)))
     for g in taxonomy.GROUP_NAMES:
         print(f"  {g:11s} -> {recipe[g]:5s}  {spec_dirs[g].name}")
 
@@ -253,8 +266,14 @@ def main():
 
     # Phase-1 routing ---------------------------------------------------------
     print("routing (phase-1) ...")
-    router = make_pred(router_dir)
-    router_probs = router.predict_proba(np.arange(N))   # (N, 11) group posteriors
+    allrows = np.arange(N)
+    wsum = float(sum(rw))
+    router_probs = np.zeros((N, taxonomy.NUM_GROUPS), dtype=np.float32)
+    for rdir, w in zip(router_dirs, rw):
+        rp = make_pred(rdir).predict_proba(allrows)      # (N, 11)
+        router_probs += (w / wsum) * rp
+        if len(router_dirs) > 1:
+            print(f"  {rdir.name:40s} coarse={float((rp.argmax(1)==y_group).mean()):.4f}")
     g_hat = router_probs.argmax(1)                       # hard pick per row
     coarse_acc = float((g_hat == y_group).mean())
     topk = max(1, args.topk)
